@@ -57,9 +57,7 @@ class AudioProcessor(AudioProcessorBase):
 # ---- RTC config with STUN (you already had this; keep TURN if you have one) ----
 rtc_configuration = {
     "iceServers": [
-        {
-            "urls": ["stun:bn-turn2.xirsys.com"]
-        },
+        { "urls": [ "stun:bn-turn2.xirsys.com" ] },
         {
             "username": "FsPFEnE5TE2ckMScYc3pVC22O8kJ2AfIR8qGUSlqL7-SN2E-GuGbi4p_zLf3CZlPAAAAAGibaRxsYWtzaDAyMDA5",
             "credential": "d998be8c-7797-11f0-9520-0242ac140004",
@@ -75,28 +73,22 @@ rtc_configuration = {
     ]
 }
 
-st.title("🎤 Microphone Test with TURN Server")
+st.title("🎤 Microphone Test with WebRTC")
 
-webrtc_streamer(
-    key="mic",
-    mode=WebRtcMode.SENDONLY,  # Only sending audio
-    audio_receiver_size=256,
-    rtc_configuration=rtc_configuration,  # <-- Xirsys config here
+webrtc_ctx = webrtc_streamer(
+    key="mic-test",
+    mode=WebRtcMode.SENDONLY,  # only sending audio
+    rtc_configuration=rtc_configuration,
     media_stream_constraints={
         "audio": True,
         "video": False
     }
 )
 
-# ---- Connection status checks & user hints ----
-connected = False
-# webrtc_ctx may be None or have state attribute; handle both
-if webrtc_ctx is not None:
-    try:
-        # .state.playing is a reliable check to see if WebRTC is up
-        connected = bool(getattr(webrtc_ctx.state, "playing", False))
-    except Exception:
-        connected = False
+if webrtc_ctx and webrtc_ctx.state.playing:
+    st.success("✅ Microphone is connected and streaming!")
+else:
+    st.info("🎙 Please allow microphone access in your browser.")
 
 if not connected:
     st.markdown(

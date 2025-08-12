@@ -96,6 +96,8 @@ st.markdown('<div class="subtitle">Record your voice and let the AI predict your
 recorded_frames = []
 
 class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        self.frames = []
     def recv_audio_frame(self, frame: av.AudioFrame) -> av.AudioFrame:
         audio = frame.to_ndarray()
         recorded_frames.append(audio)

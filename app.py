@@ -55,24 +55,37 @@ class AudioProcessor(AudioProcessorBase):
         return frame
 
 # ---- RTC config with STUN (you already had this; keep TURN if you have one) ----
-RTC_CONFIGURATION = {
+rtc_configuration = {
     "iceServers": [
-        {"urls": ["stun:stun.l.google.com:19302"]},  # STUN
         {
-            "urls": ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-            "username": "openrelayproject",
-            "credential": "openrelayproject"
+            "urls": ["stun:bn-turn2.xirsys.com"]
+        },
+        {
+            "username": "FsPFEnE5TE2ckMScYc3pVC22O8kJ2AfIR8qGUSlqL7-SN2E-GuGbi4p_zLf3CZlPAAAAAGibaRxsYWtzaDAyMDA5",
+            "credential": "d998be8c-7797-11f0-9520-0242ac140004",
+            "urls": [
+                "turn:bn-turn2.xirsys.com:80?transport=udp",
+                "turn:bn-turn2.xirsys.com:3478?transport=udp",
+                "turn:bn-turn2.xirsys.com:80?transport=tcp",
+                "turn:bn-turn2.xirsys.com:3478?transport=tcp",
+                "turns:bn-turn2.xirsys.com:443?transport=tcp",
+                "turns:bn-turn2.xirsys.com:5349?transport=tcp"
+            ]
         }
     ]
 }
 
+st.title("🎤 Microphone Test with TURN Server")
 
-webrtc_ctx = webrtc_streamer(
-    key="speech-to-text",
-    mode=WebRtcMode.SENDONLY,  # Sending audio only
-    audio_processor_factory=AudioProcessor,  # <-- THIS tells it to use your processor
-    rtc_configuration=RTC_CONFIGURATION,
-    media_stream_constraints={"audio": True, "video": False}
+webrtc_streamer(
+    key="mic",
+    mode=WebRtcMode.SENDONLY,  # Only sending audio
+    audio_receiver_size=256,
+    rtc_configuration=rtc_configuration,  # <-- Xirsys config here
+    media_stream_constraints={
+        "audio": True,
+        "video": False
+    }
 )
 
 # ---- Connection status checks & user hints ----

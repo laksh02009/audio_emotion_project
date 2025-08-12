@@ -55,7 +55,7 @@ class AudioProcessor(AudioProcessorBase):
         return frame
 
 # ---- RTC config with STUN (you already had this; keep TURN if you have one) ----
-rtc_configuration = RTCConfiguration({
+rtc_configuration = {
     "iceServers": [
         {"urls": ["stun:bn-turn2.xirsys.com"]},
         {
@@ -71,7 +71,8 @@ rtc_configuration = RTCConfiguration({
             "credential": "d998be8c-7797-11f0-9520-0242ac140004"
         }
     ]
-})
+}
+
 
 webrtc_ctx = webrtc_streamer(
     key="audio-capture",

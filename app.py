@@ -55,12 +55,10 @@ class AudioProcessor(AudioProcessorBase):
         return frame
 
 # ---- RTC config with STUN (you already had this; keep TURN if you have one) ----
-rtc_configuration = {
+rtc_configuration = RTCConfiguration({
     "iceServers": [
-        { "urls": [ "stun:bn-turn2.xirsys.com" ] },
+        {"urls": ["stun:bn-turn2.xirsys.com"]},
         {
-            "username": "FsPFEnE5TE2ckMScYc3pVC22O8kJ2AfIR8qGUSlqL7-SN2E-GuGbi4p_zLf3CZlPAAAAAGibaRxsYWtzaDAyMDA5",
-            "credential": "d998be8c-7797-11f0-9520-0242ac140004",
             "urls": [
                 "turn:bn-turn2.xirsys.com:80?transport=udp",
                 "turn:bn-turn2.xirsys.com:3478?transport=udp",
@@ -68,21 +66,19 @@ rtc_configuration = {
                 "turn:bn-turn2.xirsys.com:3478?transport=tcp",
                 "turns:bn-turn2.xirsys.com:443?transport=tcp",
                 "turns:bn-turn2.xirsys.com:5349?transport=tcp"
-            ]
+            ],
+            "username": "FsPFEnE5TE2ckMScYc3pVC22O8kJ2AfIR8qGUSlqL7-SN2E-GuGbi4p_zLf3CZlPAAAAAGibaRxsYWtzaDAyMDA5",
+            "credential": "d998be8c-7797-11f0-9520-0242ac140004"
         }
     ]
-}
-
-st.title("🎤 Microphone Test with WebRTC")
+})
 
 webrtc_ctx = webrtc_streamer(
-    key="mic-test",
-    mode=WebRtcMode.SENDONLY,  # only sending audio
+    key="audio-capture",
+    mode=WebRtcMode.SENDONLY,
+    audio_receiver_size=1024,
     rtc_configuration=rtc_configuration,
-    media_stream_constraints={
-        "audio": True,
-        "video": False
-    }
+    media_stream_constraints={"audio": True, "video": False}
 )
 
 if webrtc_ctx and webrtc_ctx.state.playing:

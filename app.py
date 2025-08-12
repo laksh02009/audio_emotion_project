@@ -90,7 +90,7 @@ if webrtc_ctx and webrtc_ctx.state.playing:
 else:
     st.info("🎙 Please allow microphone access in your browser.")
 
-if not connected:
+if not (webrtc_ctx and webrtc_ctx.state.playing):
     st.markdown(
         '<div class="warning-box">Microphone stream not connected yet. '
         'Please allow microphone access in your browser (click the lock icon → Allow). '

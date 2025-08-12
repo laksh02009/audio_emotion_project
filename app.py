@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import numpy as np
 import pickle
@@ -6,7 +5,6 @@ import librosa
 import soundfile as sf
 import tempfile
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
-import queue
 import av
 
 SAMPLE_RATE = 22050
@@ -17,7 +15,7 @@ with open("audio_emotion_model.pkl", "rb") as f:
 
 st.set_page_config(page_title="Audio Emotion Detection", layout="centered")
 
-# ---- CSS unchanged ----
+# ---- CSS ----
 st.markdown(
     """
     <style>
@@ -38,33 +36,20 @@ st.markdown(
 st.markdown("<h1>🎙 Audio Emotion Detection</h1>", unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Record your voice and let the AI predict your emotion.</div>', unsafe_allow_html=True)
 
-# ---- session buffer ----
-if "recorded_frames" not in st.session_state:
-    st.session_state.recorded_frames = []
+# ---- session buffer for audio frames ----
+if "audio_buffer" not in st.session_state:
+    st.session_state.audio_buffer = []
 
 if "prediction" not in st.session_state:
     st.session_state.prediction = None
 
-# ---- TURN/STUN config (keep your Xirsys values) ----
+# TURN/STUN config (example)
 rtc_configuration = {
     "iceServers": [
-        {"urls": ["stun:bn-turn2.xirsys.com"]},
-        {
-            "urls": [
-                "turn:bn-turn2.xirsys.com:80?transport=udp",
-                "turn:bn-turn2.xirsys.com:3478?transport=udp",
-                "turn:bn-turn2.xirsys.com:80?transport=tcp",
-                "turn:bn-turn2.xirsys.com:3478?transport=tcp",
-                "turns:bn-turn2.xirsys.com:443?transport=tcp",
-                "turns:bn-turn2.xirsys.com:5349?transport=tcp"
-            ],
-            "username": "FsPFEnE5TE2ckMScYc3pVC22O8kJ2AfIR8qGUSlqL7-SN2E-GuGbi4p_zLf3CZlPAAAAAGibaRxsYWtzaDAyMDA5",
-            "credential": "d998be8c-7797-11f0-9520-0242ac140004"
-        }
+        {"urls": ["stun:stun.l.google.com:19302"]}  # Simple public STUN server for example
     ]
 }
 
-# ---- start webRTC (no audio_processor_factory: we'll pull frames from audio_receiver) ----
 webrtc_ctx = webrtc_streamer(
     key="audio-capture",
     mode=WebRtcMode.SENDONLY,
@@ -74,123 +59,74 @@ webrtc_ctx = webrtc_streamer(
     async_processing=True,
 )
 
-# ---- read queued frames safely using available API ----
-def drain_audio_receiver(ctx):
-    """
-    Pull available frames from ctx.audio_receiver using supported methods.
-    Returns list of av.AudioFrame objects.
-    """
+# Function to drain audio frames from audio_receiver queue
+def get_audio_frames(ctx):
     frames = []
-    if not ctx:
-        return frames
-    recv = getattr(ctx, "audio_receiver", None)
-    if not recv:
-        return frames
-
-    # Try get_frame (blocking with timeout)
-    get_frame = getattr(recv, "get_frame", None)
-    if callable(get_frame):
-        # collect frames until timeout
+    if ctx and ctx.audio_receiver:
         while True:
             try:
-                frame = recv.get_frame(timeout=0.01)  # small timeout
+                frame = ctx.audio_receiver.get_frame(timeout=0.01)
                 if frame is None:
                     break
                 frames.append(frame)
             except Exception:
-                # timeout or no more frames
                 break
-        return frames
-
-    # Fallback: try recv() (may be blocking) — do one non-blocking attempt
-    recv_fn = getattr(recv, "recv", None)
-    if callable(recv_fn):
-        try:
-            frame = recv_fn(timeout=0.01)  # some implementations accept timeout
-            if frame is not None:
-                frames.append(frame)
-        except TypeError:
-            # recv may not accept timeout — call once and catch exceptions
-            try:
-                frame = recv_fn()
-                if frame is not None:
-                    frames.append(frame)
-            except Exception:
-                pass
-        except Exception:
-            pass
-
     return frames
 
-# ---- collect frames into session buffer ----
-if webrtc_ctx and getattr(webrtc_ctx.state, "playing", False):
-    # drain any frames available this run
-    frames = drain_audio_receiver(webrtc_ctx)
-    for f in frames:
-        try:
-            audio = f.to_ndarray()
-            st.session_state.recorded_frames.append(audio)
-        except Exception:
-            # skip bad frames
-            continue
+# Collect frames continuously if mic is streaming
+if webrtc_ctx.state.playing:
+    frames = get_audio_frames(webrtc_ctx)
+    for frame in frames:
+        # Convert to ndarray with shape (channels, samples)
+        audio_np = frame.to_ndarray(format="flt32")  # float32 normalized audio
+        st.session_state.audio_buffer.append(audio_np)
 
-# ---- UI status ----
-if webrtc_ctx and getattr(webrtc_ctx.state, "playing", False):
-    st.success("✅ Microphone is connected and streaming!")
+if webrtc_ctx.state.playing:
+    st.success("✅ Microphone connected and streaming!")
 else:
-    st.info("🎙 Please allow microphone access in your browser or wait for connection.")
+    st.info("🎙 Please allow microphone access in your browser.")
 
-if not (webrtc_ctx and getattr(webrtc_ctx.state, "playing", False)):
+if not webrtc_ctx.state.playing:
     st.markdown(
         '<div class="warning-box">Microphone stream not connected yet. '
         'Please allow microphone access in your browser (click the lock icon → Allow). '
         'If it still fails, your network may block WebRTC and you may need a TURN server.</div>',
         unsafe_allow_html=True,
     )
-else:
-    st.success("Microphone connected — speak now (your audio is being captured).")
 
-# ---- Live prediction display (optional) ----
-if st.session_state.prediction is not None:
-    st.markdown(f'<div class="prediction-box">🎯 Predicted Emotion: <strong>{st.session_state.prediction}</strong></div>', unsafe_allow_html=True)
-
-# ---- Analyze Button: merge buffered frames, resample, extract features, predict ----
+# When Analyze button clicked
 if st.button("Analyze Recording"):
-    if not st.session_state.recorded_frames:
+    if not st.session_state.audio_buffer:
         st.warning("No audio recorded yet! Please speak into the mic before analyzing.")
     else:
-        # concatenate frames (frames from webRTC are typically shape (channels, samples))
-        audio_np = np.concatenate(st.session_state.recorded_frames, axis=0).astype(np.float32)
+        # Concatenate all buffered frames along time axis
+        audio_all = np.concatenate(st.session_state.audio_buffer, axis=1)  # shape (channels, total_samples)
 
-        # Many browsers send 48k sampling. Resample to SAMPLE_RATE
-        # Normalize if necessary: frames may already be float in -1..1 or int16 -32768..32767
-        # We'll try to detect scale
-        if audio_np.dtype == np.int16 or audio_np.max() > 1.0:
-            audio_np = audio_np / 32768.0
+        # Convert to mono by averaging channels if multi-channel
+        if audio_all.shape[0] > 1:
+            audio_all = np.mean(audio_all, axis=0)
+        else:
+            audio_all = audio_all.flatten()
 
-        # flatten to mono if multi-channel
-        if audio_np.ndim > 1:
-            audio_np = np.mean(audio_np, axis=0)
-
-        # resample from 48000 (typical WebRTC) to your SAMPLE_RATE
+        # Resample to SAMPLE_RATE if needed (WebRTC often gives 48kHz)
         try:
-            audio_resampled = librosa.resample(audio_np, orig_sr=48000, target_sr=SAMPLE_RATE)
+            audio_resampled = librosa.resample(audio_all, orig_sr=48000, target_sr=SAMPLE_RATE)
         except Exception:
-            # fallback: assume it's already at SAMPLE_RATE
-            audio_resampled = audio_np
+            audio_resampled = audio_all
 
-        # Save to wav (for playback and debugging)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-            sf.write(tmp.name, audio_resampled, SAMPLE_RATE)
-            tmp_path = tmp.name
+        # Save to temp wav file for playback + feature extraction
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
+            sf.write(tmp_wav.name, audio_resampled, SAMPLE_RATE)
+            wav_path = tmp_wav.name
 
-        st.audio(tmp_path, format="audio/wav")
+        # Playback audio
+        st.audio(wav_path, format="audio/wav")
 
-        # feature extraction (match training: n_mfcc=40)
-        y, sr = librosa.load(tmp_path, sr=SAMPLE_RATE)
+        # Feature extraction: MFCC 40 (same as training)
+        y, sr = librosa.load(wav_path, sr=SAMPLE_RATE)
         mfccs = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40).T, axis=0).reshape(1, -1)
 
-        # predict
+        # Prediction
         try:
             prediction = model.predict(mfccs)[0]
             st.session_state.prediction = prediction
@@ -198,5 +134,9 @@ if st.button("Analyze Recording"):
         except Exception as e:
             st.error(f"Prediction error: {e}")
 
-        # clear buffer for next recording
-        st.session_state.recorded_frames.clear()
+        # Clear buffer for next recording
+        st.session_state.audio_buffer = []
+
+# Show prediction if available
+if st.session_state.prediction:
+    st.markdown(f'<div class="prediction-box">🎯 Predicted Emotion: <strong>{st.session_state.prediction}</strong></div>', unsafe_allow_html=True)

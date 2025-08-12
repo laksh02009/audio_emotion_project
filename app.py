@@ -41,20 +41,30 @@ st.markdown('<div class="subtitle">Record your voice and let the AI predict your
 if "recorded_frames" not in st.session_state:
     st.session_state.recorded_frames = []
 
-# AudioProcessor with safe guard to prevent server-side crash
 class AudioProcessor(AudioProcessorBase):
     def recv_audio_frame(self, frame: av.AudioFrame) -> av.AudioFrame:
         try:
             audio = frame.to_ndarray()
-        except Exception as e:
-            # If conversion fails, skip this frame (prevents aioice/socket crashes bubbling up)
-            # you can log e to server logs if you want
+        except Exception:
             return frame
-        # append frames into session state list
+        
         st.session_state.recorded_frames.append(audio)
+        
+        # Optional live prediction
+        audio_concat = librosa.resample(
+            np.concatenate(st.session_state.recorded_frames, axis=0).astype(np.float32) / 32768.0,
+            orig_sr=48000,
+            target_sr=SAMPLE_RATE
+        )
+        if len(audio_concat) > SAMPLE_RATE:  # at least 1 sec
+            mfcc = librosa.feature.mfcc(y=audio_concat, sr=SAMPLE_RATE, n_mfcc=40)
+            mfcc = np.mean(mfcc.T, axis=0).reshape(1, -1)
+            prediction = model.predict(mfcc)[0]
+            st.session_state.prediction = prediction
+            st.session_state.recorded_frames.clear()
+        
         return frame
 
-# ---- RTC config with STUN (you already had this; keep TURN if you have one) ----
 rtc_configuration = {
     "iceServers": [
         {"urls": ["stun:bn-turn2.xirsys.com"]},
@@ -73,15 +83,18 @@ rtc_configuration = {
     ]
 }
 
-
 webrtc_ctx = webrtc_streamer(
     key="audio-capture",
     mode=WebRtcMode.SENDONLY,
     audio_receiver_size=1024,
     rtc_configuration=rtc_configuration,
-    media_stream_constraints={"audio": True, "video": False}
+    media_stream_constraints={"audio": True, "video": False},
+    audio_processor_factory=AudioProcessor
 )
 
+if "prediction" in st.session_state:
+    st.success(f"Predicted Emotion: {st.session_state.prediction}")
+    
 if webrtc_ctx and webrtc_ctx.state.playing:
     st.success("✅ Microphone is connected and streaming!")
 else:

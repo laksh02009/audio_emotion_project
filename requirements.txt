@@ -5,3 +5,5 @@ soundfile
 av
 streamlit-webrtc
 pickle-mixin
+scikit-learn==1.5.2
+

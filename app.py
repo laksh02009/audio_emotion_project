@@ -92,11 +92,17 @@ webrtc_ctx = webrtc_streamer(
 )
 
 # Process queued audio frames
-if webrtc_ctx and webrtc_ctx.state.playing and webrtc_ctx.audio_receiver:
-    audio_frames = webrtc_ctx.audio_receiver.recv_queued()
-    for frame in audio_frames:
-        audio = frame.to_ndarray()
-        st.session_state.recorded_frames.append(audio)
+if webrtc_ctx and webrtc_ctx.state.playing:
+    if webrtc_ctx.audio_receiver:
+        audio_frames = webrtc_ctx.audio_receiver.recv_queued()
+        for frame in audio_frames:
+            audio = frame.to_ndarray()
+            st.session_state.recorded_frames.append(audio)
+    else:
+        st.write("Waiting for audio receiver to be ready...")
+else:
+    st.write("WebRTC stream not yet playing...")
+
 
 if "prediction" in st.session_state:
     st.success(f"Predicted Emotion: {st.session_state.prediction}")

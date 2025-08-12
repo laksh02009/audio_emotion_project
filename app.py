@@ -1,11 +1,12 @@
 import streamlit as st
-import sounddevice as sd
 import numpy as np
 import pickle
 import librosa
 import soundfile as sf
 import tempfile
 import time
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
+import av
 
 SAMPLE_RATE = 22050
 DURATION = 5  # seconds
@@ -16,37 +17,32 @@ with open("audio_emotion_model.pkl", "rb") as f:
 
 st.set_page_config(page_title="Audio Emotion Detection", layout="centered")
 
-# Custom CSS for a subtle, clean dark theme
+# ---- Custom CSS (your existing style) ----
 st.markdown(
     """
     <style>
-    /* Background and text */
     .main {
         background-color: #1e1e1e;
         color: #e0e0e0;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-    /* Container padding and width */
     .block-container {
         max-width: 650px;
         padding: 2rem 3rem;
         margin: auto;
     }
-    /* Title styling */
     h1 {
         font-weight: 700;
         color: #4dd0e1;
         text-align: center;
         margin-bottom: 0.2rem;
     }
-    /* Subtitle styling */
     .subtitle {
         text-align: center;
         font-size: 1.1rem;
         margin-bottom: 2rem;
         color: #b0b0b0;
     }
-    /* Button style */
     div.stButton > button {
         background-color: #4dd0e1;
         color: #1e1e1e;
@@ -64,7 +60,6 @@ st.markdown(
         background-color: #26c6da;
         box-shadow: 0 5px 12px rgba(38, 198, 218, 0.6);
     }
-    /* Countdown text */
     .countdown {
         text-align: center;
         font-weight: 600;
@@ -72,7 +67,6 @@ st.markdown(
         color: #4dd0e1;
         margin-bottom: 1rem;
     }
-    /* Prediction box */
     .prediction-box {
         background-color: #2c2c2c;
         border-radius: 12px;
@@ -84,7 +78,6 @@ st.markdown(
         color: #4dd0e1;
         box-shadow: 0 0 12px rgba(77, 208, 225, 0.5);
     }
-    /* Audio player centered */
     div[data-testid="stAudio"] {
         display: flex;
         justify-content: center;
@@ -95,10 +88,20 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Title & subtitle
+# ---- App Header ----
 st.markdown("<h1>🎙 Audio Emotion Detection</h1>", unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Record your voice and let the AI predict your emotion.</div>', unsafe_allow_html=True)
 
+# ---- Store recorded audio frames ----
+recorded_frames = []
+
+class AudioProcessor(AudioProcessorBase):
+    def recv_audio_frame(self, frame: av.AudioFrame) -> av.AudioFrame:
+        audio = frame.to_ndarray()
+        recorded_frames.append(audio)
+        return frame
+
+# ---- Recording Logic ----
 if st.button("Start Recording"):
     st.markdown('<div class="countdown">Recording will start in 3 seconds...</div>', unsafe_allow_html=True)
     time.sleep(1)
@@ -107,20 +110,35 @@ if st.button("Start Recording"):
         time.sleep(1)
 
     st.markdown('<div class="countdown">🎤 Recording...</div>', unsafe_allow_html=True)
-    audio_data = sd.rec(int(DURATION * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=1, dtype='float32')
-    sd.wait()
-    st.markdown('<div class="countdown">✅ Recording complete!</div>', unsafe_allow_html=True)
+    webrtc_ctx = webrtc_streamer(
+        key="audio-capture",
+        mode=WebRtcMode.SENDONLY,
+        audio_receiver_size=1024,
+        media_stream_constraints={"audio": True, "video": False},
+        audio_processor_factory=AudioProcessor
+    )
 
-    # Save temp file
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    sf.write(temp_file.name, audio_data, SAMPLE_RATE)
+# ---- Process Recorded Audio ----
+if st.button("Analyze Recording"):
+    if not recorded_frames:
+        st.warning("No audio recorded yet!")
+    else:
+        # Combine frames and save as WAV
+        audio_np = np.concatenate(recorded_frames, axis=0).astype(np.float32)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            sf.write(tmp.name, audio_np, SAMPLE_RATE)
+            temp_path = tmp.name
 
-    # Play back recorded audio (centered by CSS)
-    st.audio(temp_file.name, format="audio/wav")
+        # Play audio
+        st.audio(temp_path, format="audio/wav")
 
-    # Feature extraction & prediction
-    y, sr = librosa.load(temp_file.name, sr=SAMPLE_RATE)
-    mfccs = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40).T, axis=0).reshape(1, -1)
-    prediction = model.predict(mfccs)[0]
+        # Feature extraction
+        y, sr = librosa.load(temp_path, sr=SAMPLE_RATE)
+        mfccs = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40).T, axis=0).reshape(1, -1)
 
-    st.markdown(f'<div class="prediction-box">🎯 Predicted Emotion: <strong>{prediction}</strong></div>', unsafe_allow_html=True)
+        # Prediction
+        prediction = model.predict(mfccs)[0]
+        st.markdown(f'<div class="prediction-box">🎯 Predicted Emotion: <strong>{prediction}</strong></div>', unsafe_allow_html=True)
+
+        # Clear buffer
+        recorded_frames.clear()

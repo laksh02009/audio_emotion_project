@@ -15,7 +15,7 @@ with open("audio_emotion_model.pkl", "rb") as f:
 
 st.set_page_config(page_title="Audio Emotion Detection", layout="centered")
 
-# ---- Custom CSS ----
+# ---- Custom CSS (keep yours as before) ----
 st.markdown(
     """
     <style>
@@ -27,6 +27,7 @@ st.markdown(
     div.stButton > button:hover { background-color: #26c6da; box-shadow: 0 5px 12px rgba(38, 198, 218, 0.6); }
     .prediction-box { background-color: #2c2c2c; border-radius: 12px; padding: 1.6rem 2rem; margin-top: 2rem; text-align: center; font-size: 1.4rem; font-weight: 700; color: #4dd0e1; box-shadow: 0 0 12px rgba(77, 208, 225, 0.5); }
     div[data-testid="stAudio"] { display: flex; justify-content: center; margin-top: 1rem; }
+    .warning-box { background: #3a3a3a; padding: 0.8rem; border-radius: 8px; color: #ffd54f; margin-bottom: 1rem; text-align:center;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -36,26 +37,29 @@ st.markdown(
 st.markdown("<h1>🎙 Audio Emotion Detection</h1>", unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Record your voice and let the AI predict your emotion.</div>', unsafe_allow_html=True)
 
-# ---- Store recorded audio frames ----
+# ---- Session storage for frames ----
 if "recorded_frames" not in st.session_state:
     st.session_state.recorded_frames = []
 
+# AudioProcessor with safe guard to prevent server-side crash
 class AudioProcessor(AudioProcessorBase):
     def recv_audio_frame(self, frame: av.AudioFrame) -> av.AudioFrame:
-        audio = frame.to_ndarray()
+        try:
+            audio = frame.to_ndarray()
+        except Exception as e:
+            # If conversion fails, skip this frame (prevents aioice/socket crashes bubbling up)
+            # you can log e to server logs if you want
+            return frame
+        # append frames into session state list
         st.session_state.recorded_frames.append(audio)
         return frame
 
-# ---- Recording UI ----
+# ---- RTC config with STUN (you already had this; keep TURN if you have one) ----
 RTC_CONFIGURATION = {
     "iceServers": [
-        {"urls": ["stun:stun.l.google.com:19302"]},  # Public Google STUN
-        # TURN server example (paid or free trial):
-        # {
-        #     "urls": ["turn:YOUR_TURN_SERVER_IP:3478"],
-        #     "username": "YOUR_USERNAME",
-        #     "credential": "YOUR_PASSWORD"
-        # }
+        {"urls": ["stun:stun.l.google.com:19302"]},
+        # Add a TURN server here (recommended) if you have one:
+        # {"urls": ["turn:turn.example.com:3478"], "username":"user","credential":"pass"}
     ]
 }
 
@@ -66,8 +70,28 @@ webrtc_ctx = webrtc_streamer(
     media_stream_constraints={"audio": True, "video": False},
     audio_processor_factory=AudioProcessor,
     async_processing=True,
-    rtc_configuration=RTC_CONFIGURATION
+    rtc_configuration=RTC_CONFIGURATION,
 )
+
+# ---- Connection status checks & user hints ----
+connected = False
+# webrtc_ctx may be None or have state attribute; handle both
+if webrtc_ctx is not None:
+    try:
+        # .state.playing is a reliable check to see if WebRTC is up
+        connected = bool(getattr(webrtc_ctx.state, "playing", False))
+    except Exception:
+        connected = False
+
+if not connected:
+    st.markdown(
+        '<div class="warning-box">Microphone stream not connected yet. '
+        'Please allow microphone access in your browser (click the lock icon → Allow). '
+        'If it still fails, your network may block WebRTC and you may need a TURN server.</div>',
+        unsafe_allow_html=True,
+    )
+else:
+    st.success("Microphone connected — speak now (your audio is being captured).")
 
 # ---- Analyze Button ----
 if st.button("Analyze Recording"):
@@ -88,4 +112,3 @@ if st.button("Analyze Recording"):
         st.markdown(f'<div class="prediction-box">🎯 Predicted Emotion: <strong>{prediction}</strong></div>', unsafe_allow_html=True)
 
         st.session_state.recorded_frames.clear()
-

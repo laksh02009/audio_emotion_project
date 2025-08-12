@@ -57,21 +57,22 @@ class AudioProcessor(AudioProcessorBase):
 # ---- RTC config with STUN (you already had this; keep TURN if you have one) ----
 RTC_CONFIGURATION = {
     "iceServers": [
-        {"urls": ["stun:stun.l.google.com:19302"]},
-        # Add a TURN server here (recommended) if you have one:
-        # {"urls": ["turn:turn.example.com:3478"], "username":"user","credential":"pass"}
+        {"urls": ["stun:stun.l.google.com:19302"]},  # STUN
+        {
+            "urls": ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+            "username": "openrelayproject",
+            "credential": "openrelayproject"
+        }
     ]
 }
 
+
 webrtc_ctx = webrtc_streamer(
-    key="audio-capture",
-    mode=WebRtcMode.SENDONLY,
-    audio_receiver_size=1024,
-    media_stream_constraints={"audio": True, "video": False},
-    audio_processor_factory=AudioProcessor,
-    async_processing=True,
+    key="speech-to-text",
     rtc_configuration=RTC_CONFIGURATION,
+    media_stream_constraints={"audio": True, "video": False}
 )
+
 
 # ---- Connection status checks & user hints ----
 connected = False

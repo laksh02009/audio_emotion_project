@@ -88,9 +88,15 @@ webrtc_ctx = webrtc_streamer(
     mode=WebRtcMode.SENDONLY,
     audio_receiver_size=1024,
     rtc_configuration=rtc_configuration,
-    media_stream_constraints={"audio": True, "video": False},
-    audio_processor_factory=AudioProcessor
+    media_stream_constraints={"audio": True, "video": False}
 )
+
+# Process queued audio frames
+if webrtc_ctx.audio_receiver:
+    audio_frames = webrtc_ctx.audio_receiver.recv_queued()
+    for frame in audio_frames:
+        audio = frame.to_ndarray()
+        st.session_state.recorded_frames.append(audio)
 
 if "prediction" in st.session_state:
     st.success(f"Predicted Emotion: {st.session_state.prediction}")

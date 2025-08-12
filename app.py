@@ -92,7 +92,7 @@ webrtc_ctx = webrtc_streamer(
 )
 
 # Process queued audio frames
-if webrtc_ctx.audio_receiver:
+if webrtc_ctx and webrtc_ctx.state.playing and webrtc_ctx.audio_receiver:
     audio_frames = webrtc_ctx.audio_receiver.recv_queued()
     for frame in audio_frames:
         audio = frame.to_ndarray()

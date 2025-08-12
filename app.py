@@ -69,10 +69,11 @@ RTC_CONFIGURATION = {
 
 webrtc_ctx = webrtc_streamer(
     key="speech-to-text",
+    mode=WebRtcMode.SENDONLY,  # Sending audio only
+    audio_processor_factory=AudioProcessor,  # <-- THIS tells it to use your processor
     rtc_configuration=RTC_CONFIGURATION,
     media_stream_constraints={"audio": True, "video": False}
 )
-
 
 # ---- Connection status checks & user hints ----
 connected = False

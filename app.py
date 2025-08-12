@@ -47,6 +47,18 @@ class AudioProcessor(AudioProcessorBase):
         return frame
 
 # ---- Recording UI ----
+RTC_CONFIGURATION = {
+    "iceServers": [
+        {"urls": ["stun:stun.l.google.com:19302"]},  # Public Google STUN
+        # TURN server example (paid or free trial):
+        # {
+        #     "urls": ["turn:YOUR_TURN_SERVER_IP:3478"],
+        #     "username": "YOUR_USERNAME",
+        #     "credential": "YOUR_PASSWORD"
+        # }
+    ]
+}
+
 webrtc_ctx = webrtc_streamer(
     key="audio-capture",
     mode=WebRtcMode.SENDONLY,
@@ -54,6 +66,7 @@ webrtc_ctx = webrtc_streamer(
     media_stream_constraints={"audio": True, "video": False},
     audio_processor_factory=AudioProcessor,
     async_processing=True,
+    rtc_configuration=RTC_CONFIGURATION
 )
 
 # ---- Analyze Button ----
